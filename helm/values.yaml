@@ -1,9 +1,15 @@
 namespaceOverride: ai-healing-system
 nameOverride: ai-healing-platform
-image:
-  repository: shubham379/ai-self-healing-platform
+backendImage:
+  repository: shubham379/ai-self-healing-platform-backend
   tag: v1
   pullPolicy: IfNotPresent
+
+frontendImage:
+  repository: shubham379/ai-self-healing-platform-frontend
+  tag: v1
+  pullPolicy: IfNotPresent
+
 backend:
   replicas: 2
   service:
@@ -24,6 +30,7 @@ frontend:
   ingress:
     enabled: true
     host: ai-healing.local
+
 monitoring:
   enabled: false
 ai:

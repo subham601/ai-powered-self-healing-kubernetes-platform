@@ -2,7 +2,9 @@ name: ci-cd
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
+
 
 permissions:
   contents: write
@@ -30,13 +32,24 @@ jobs:
       - name: Build and push backend image
         run: |
           set -euo pipefail
-          docker build -t shubham379/ai-self-healing-platform:${{ steps.tag.outputs.NEXT_TAG }} ./backend
-          docker push shubham379/ai-self-healing-platform:${{ steps.tag.outputs.NEXT_TAG }}
+          docker build -t shubham379/ai-self-healing-platform-backend:${{ steps.tag.outputs.NEXT_TAG }} ./backend
+          docker push shubham379/ai-self-healing-platform-backend:${{ steps.tag.outputs.NEXT_TAG }}
 
-      - name: Update Helm values image tag
+      - name: Build and push frontend image
         run: |
           set -euo pipefail
-          sed -i -E "s|^  tag: .*|  tag: ${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
+          docker build -t shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }} ./frontend
+          docker push shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }}
+
+      - name: Update Helm values image tags (backend + frontend)
+        run: |
+          set -euo pipefail
+
+          # backendImage.tag
+          sed -i -E "/backendImage:/,/frontendImage:/ s|(^[[:space:]]+tag: ).*|\1${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
+
+          # frontendImage.tag
+          sed -i -E "/frontendImage:/,/pullPolicy:/ s|(^[[:space:]]+tag: ).*|\1${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
 
       - name: Commit Helm values update
         env:
