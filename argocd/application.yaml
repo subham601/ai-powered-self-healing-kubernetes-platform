@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/subham601/ai-powered-self-healing-kubernetes-platform.git
     targetRevision: HEAD
-    path: helm
+    path: ./helm
     helm:
       valueFiles:
         - values.yaml
