@@ -96,26 +96,6 @@ jobs:
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push
 
-      - name: Trigger ArgoCD sync
-        env:
-          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
-          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
-        run: |
-          set -euo pipefail
 
-          # Fail fast if secrets are missing (prevents curl: No host part)
-          if [ -z "${ARGOCD_SERVER:-}" ]; then
-            echo "ARGOCD_SERVER secret is missing/empty" >&2
-            exit 1
-          fi
-          if [ -z "${ARGOCD_AUTH_TOKEN:-}" ]; then
-            echo "ARGOCD_AUTH_TOKEN secret is missing/empty" >&2
-            exit 1
-          fi
-
-          curl --fail --retry 5 --retry-delay 5 --retry-all-errors \
-            -sS -X POST \
-            -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
-            "${ARGOCD_SERVER}/api/v1/applications/ai-healing-platform/sync"
 
 
