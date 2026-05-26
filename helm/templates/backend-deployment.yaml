@@ -21,8 +21,8 @@ spec:
       serviceAccountName: {{ .Values.security.serviceAccountName }}
       containers:
         - name: backend
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.backendImage.repository }}:{{ .Values.backendImage.tag }}"
+          imagePullPolicy: {{ .Values.backendImage.pullPolicy }}
           ports:
             - containerPort: 9000
           readinessProbe:
