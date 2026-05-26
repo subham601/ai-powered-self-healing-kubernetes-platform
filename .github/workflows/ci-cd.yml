@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -44,12 +46,18 @@ jobs:
           sed -i -E "s|^  tag: .*|  tag: ${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
 
       - name: Commit Helm values update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add helm/values.yaml
           git commit -m "chore: bump image tag to ${{ steps.tag.outputs.NEXT_TAG }}" || exit 0
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           git push
+
+
 
       - name: Trigger ArgoCD sync
         env:
