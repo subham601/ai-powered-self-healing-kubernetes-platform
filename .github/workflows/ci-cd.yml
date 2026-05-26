@@ -24,10 +24,13 @@ jobs:
           set -euo pipefail
           echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
 
-      - name: Compute next image tag
+      - name: Compute immutable image tag (git SHA)
         id: tag
         run: |
-          echo "NEXT_TAG=v1" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          # Use short commit SHA to avoid YAML parsing and guarantee uniqueness per change.
+          NEXT_TAG="${GITHUB_SHA::7}"
+          echo "NEXT_TAG=${NEXT_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
         run: |
@@ -41,15 +44,33 @@ jobs:
           docker build -t shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }} ./frontend
           docker push shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }}
 
-      - name: Update Helm values image tags (backend + frontend)
+      - name: Update Helm values image tags (backend + frontend) [idempotent]
         run: |
           set -euo pipefail
 
-          # backendImage.tag
-          sed -i -E "/backendImage:/,/frontendImage:/ s|(^[[:space:]]+tag: ).*|\1${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
+          TAG="${{ steps.tag.outputs.NEXT_TAG }}"
 
+          # Idempotency: only update file if tags differ.
+          current_backend_tag="$(awk '/^backendImage:/{f=1} f && $1=="tag:"{print $2; exit}' helm/values.yaml)"
+          current_frontend_tag="$(awk '/^frontendImage:/{f=1} f && $1=="tag:"{print $2; exit}' helm/values.yaml)"
+
+          echo "Current backend tag: ${current_backend_tag}"
+          echo "Current frontend tag: ${current_frontend_tag}"
+          echo "Next tag: ${TAG}"
+
+          if [[ "${current_backend_tag}" == "${TAG}" && "${current_frontend_tag}" == "${TAG}" ]]; then
+            echo "Helm values already up-to-date; skipping values update."
+            echo "VALUES_UPDATED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # Robust key-anchored replacements (avoid brittle section-range sed).
+          # backendImage.tag
+          sed -i -E "s|^(backendImage:\n[[:space:]]+repository:.*\n[[:space:]]+tag:)[[:space:]]*.*$|\\1 ${TAG}|" helm/values.yaml
           # frontendImage.tag
-          sed -i -E "/frontendImage:/,/pullPolicy:/ s|(^[[:space:]]+tag: ).*|\1${{ steps.tag.outputs.NEXT_TAG }}|" helm/values.yaml
+          sed -i -E "s|^(frontendImage:\n[[:space:]]+repository:.*\n[[:space:]]+tag:)[[:space:]]*.*$|\\1 ${TAG}|" helm/values.yaml
+
+          echo "VALUES_UPDATED=true" >> "$GITHUB_ENV"
 
       - name: Commit Helm values update
         env:
@@ -58,8 +79,20 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ "${VALUES_UPDATED:-true}" != "true" ]; then
+            echo "Helm values not updated; skipping commit/push."
+            exit 0
+          fi
+
           git add helm/values.yaml
-          git commit -m "chore: bump image tag to ${{ steps.tag.outputs.NEXT_TAG }}" || exit 0
+
+          # Idempotency safeguard: if nothing changed, avoid failing the workflow.
+          git diff --cached --quiet && {
+            echo "No staged diff; skipping commit/push."
+            exit 0
+          }
+
+          git commit -m "chore: bump image tag to ${{ steps.tag.outputs.NEXT_TAG }}"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push
 
@@ -68,6 +101,21 @@ jobs:
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
           ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
         run: |
-          curl -sS -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
-            -X POST "${ARGOCD_SERVER}/api/v1/applications/ai-healing-platform/sync"
+          set -euo pipefail
+
+          # Fail fast if secrets are missing (prevents curl: No host part)
+          if [ -z "${ARGOCD_SERVER:-}" ]; then
+            echo "ARGOCD_SERVER secret is missing/empty" >&2
+            exit 1
+          fi
+          if [ -z "${ARGOCD_AUTH_TOKEN:-}" ]; then
+            echo "ARGOCD_AUTH_TOKEN secret is missing/empty" >&2
+            exit 1
+          fi
+
+          curl --fail --retry 5 --retry-delay 5 --retry-all-errors \
+            -sS -X POST \
+            -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
+            "${ARGOCD_SERVER}/api/v1/applications/ai-healing-platform/sync"
+
 
