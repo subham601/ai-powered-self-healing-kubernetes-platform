@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ai-healing-platform
+  namespace: argocd
+spec:
+  description: Isolated project for AI self-healing platform
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: ai-healing-system
+      server: '*'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ai-healing-platform
+description: AI-Powered Self-Healing Kubernetes Platform (isolated)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

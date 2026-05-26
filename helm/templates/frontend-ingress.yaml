@@ -1,0 +1,20 @@
+{{- if .Values.frontend.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-healing-platform.fullname" . }}
+  namespace: {{ .Values.namespaceOverride }}
+spec:
+  rules:
+    - host: {{ .Values.frontend.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-healing-platform.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
+{{- end }}
+

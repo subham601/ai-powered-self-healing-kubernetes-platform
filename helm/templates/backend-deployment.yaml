@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-healing-platform.fullname" . }}-backend
+  namespace: {{ .Values.namespaceOverride }}
+  labels:
+    app.kubernetes.io/name: {{ include "ai-healing-platform.name" . }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ai-healing-platform.name" . }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ai-healing-platform.name" . }}
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: {{ .Values.security.serviceAccountName }}
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 9000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          env:
+            - name: AI_PROVIDER
+              value: {{ .Values.ai.provider }}
+            - name: OLLAMA_BASE_URL
+              value: {{ .Values.ai.ollamaBaseUrl }}
+

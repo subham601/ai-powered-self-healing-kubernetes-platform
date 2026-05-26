@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-healing-platform
+  namespace: argocd
+spec:
+  project: ai-healing-platform
+  destination:
+    namespace: ai-healing-system
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/subham601/ai-powered-self-healing-kubernetes-platform.git
+    targetRevision: HEAD
+    path: helm
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: image.tag
+          value: v1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

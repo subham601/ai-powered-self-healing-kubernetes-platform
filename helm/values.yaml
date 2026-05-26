@@ -1,0 +1,40 @@
+namespaceOverride: ai-healing-system
+nameOverride: ai-healing-platform
+image:
+  repository: shubham379/ai-self-healing-platform
+  tag: v1
+  pullPolicy: IfNotPresent
+backend:
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 9000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+frontend:
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8085
+  ingress:
+    enabled: true
+    host: ai-healing.local
+monitoring:
+  enabled: false
+ai:
+  provider: ollama
+  ollamaBaseUrl: http://ollama:11434
+  openaiApiKeySecretRef:
+    name: ai-healing-openai
+    key: OPENAI_API_KEY
+security:
+  rbac:
+    create: true
+  serviceAccountName: ai-healing-platform
+corsAllowOrigins: []
+
