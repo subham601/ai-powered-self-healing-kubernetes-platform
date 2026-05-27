@@ -1,4 +1,4 @@
-{{- if and .Values.monitoring.enabled (not (empty .Values.monitoring.grafana.dashboardsDisabled)) }}
+{{- if .Values.monitoring.enabled }}
 {{- $fullname := include "ai-healing-platform.fullname" . -}}
 {{- $ns := .Values.namespaceOverride -}}
 apiVersion: v1

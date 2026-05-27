@@ -1,6 +1,9 @@
 namespaceOverride: ai-healing-system
 nameOverride: ai-healing-platform
 
+namespace:
+  create: false
+
 backendImage:
   repository: shubham379/ai-self-healing-platform-backend
   tag: 8b85100

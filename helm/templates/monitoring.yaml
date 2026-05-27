@@ -1,7 +1,6 @@
 {{- if .Values.monitoring.enabled }}
 {{- $fullname := include "ai-healing-platform.fullname" . -}}
 {{- $ns := .Values.namespaceOverride -}}
-{{- include (print $.Template.BasePath "/monitoring-promtail-wrap.yaml") . }}
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -1,5 +1,7 @@
+{{- if .Values.namespace.create }}
 apiVersion: v1
 kind: Namespace
 metadata:
   name: {{ .Values.namespaceOverride }}
+{{- end }}
 

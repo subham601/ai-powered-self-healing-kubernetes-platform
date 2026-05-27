@@ -1,9 +1,8 @@
-{{- if and .Values.monitoring.enabled .Values.monitoring.promtail.enabled }}
-{{- $ns := .Values.namespaceOverride -}}
----
-{{- include (print $.Template.BasePath "/promtail-configmap.yaml") . }}
----
-{{- include (print $.Template.BasePath "/promtail-rbac.yaml") . }}
----
-{{- include (print $.Template.BasePath "/promtail-daemonset.yaml") . }}
+{{/* 
+Disabled wrapper: Promtail resources must be rendered only by:
+- promtail-configmap.yaml
+- promtail-daemonset.yaml
+- promtail-rbac.yaml
+*/}}
+{{- if false -}}
 {{- end }}
