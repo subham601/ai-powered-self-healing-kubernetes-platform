@@ -1,0 +1,9 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.promtail.enabled }}
+{{- $ns := .Values.namespaceOverride -}}
+---
+{{- include (print $.Template.BasePath "/promtail-configmap.yaml") . }}
+---
+{{- include (print $.Template.BasePath "/promtail-rbac.yaml") . }}
+---
+{{- include (print $.Template.BasePath "/promtail-daemonset.yaml") . }}
+{{- end }}

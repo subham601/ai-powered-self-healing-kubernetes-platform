@@ -1,0 +1,55 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.promtail.enabled }}
+{{- $fullname := include "ai-healing-platform.fullname" . -}}
+{{- $ns := .Values.namespaceOverride -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $fullname }}-promtail
+  namespace: {{ $ns }}
+  labels:
+    app: {{ $fullname }}-promtail
+spec:
+  selector:
+    matchLabels:
+      app: {{ $fullname }}-promtail
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}-promtail
+    spec:
+      serviceAccountName: {{ .Values.security.serviceAccountName }}
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      containers:
+        - name: promtail
+          image: {{ .Values.monitoring.promtail.image | default "grafana/promtail:3.1.0" }}
+          args:
+            - --config.file=/etc/promtail/promtail.yaml
+          ports:
+            - name: http
+              containerPort: 9080
+          resources:
+            {{- toYaml .Values.monitoring.promtail.resources | nindent 12 | default "{}" }}
+          volumeMounts:
+            - name: promtail-config
+              mountPath: /etc/promtail
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: varlogcontainers
+              mountPath: /var/log/containers
+              readOnly: true
+      volumes:
+        - name: promtail-config
+          configMap:
+            name: {{ $fullname }}-promtail-config
+            items:
+              - key: promtail.yaml
+                path: promtail.yaml
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log/containers
+{{- end }}

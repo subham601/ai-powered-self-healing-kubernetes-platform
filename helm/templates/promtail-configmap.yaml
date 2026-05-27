@@ -1,0 +1,70 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.promtail.enabled }}
+{{- $fullname := include "ai-healing-platform.fullname" . -}}
+{{- $ns := .Values.namespaceOverride -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-promtail-config
+  namespace: {{ $ns }}
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+
+    positions:
+      filename: /tmp/positions.yaml
+
+    clients:
+      - url: {{ .Values.monitoring.promtail.lokiUrl | default (printf "http://%s-loki:3100/loki/api/v1/push" $fullname) | quote }}
+
+    scrape_configs:
+      - job_name: kubernetes-pods
+        pipeline_stages:
+          - cri: {}
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Kubernetes metadata
+          - action: replace
+            source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+
+          # Useful grouping labels
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_controller_name]
+            target_label: deployment
+
+          # Scrape logs from the kubelet pod log location.
+          # Promtail expects file paths like: /var/log/pods/<podUID>/<containerName>/*.log
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_uid]
+            target_label: __path__
+            replacement: /var/log/pods/$1/*.log
+
+          # Ensure the log stream has at least these labels
+          - action: replace
+            source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_name]
+            separator: /
+            target_label: job
+
+      # Container logs fallback (works with containerd/cri-o setups)
+      - job_name: kubernetes-containers
+        pipeline_stages:
+          - cri: {}
+        static_configs:
+          - targets:
+              - localhost
+            labels:
+              job: kubernetes-containers
+              __path__: /var/log/containers/*.log
+{{- end }}

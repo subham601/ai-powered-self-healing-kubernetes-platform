@@ -1,6 +1,7 @@
 {{- if .Values.monitoring.enabled }}
 {{- $fullname := include "ai-healing-platform.fullname" . -}}
 {{- $ns := .Values.namespaceOverride -}}
+{{- include (print $.Template.BasePath "/monitoring-promtail-wrap.yaml") . }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -243,10 +244,15 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
       volumes:
         - name: datasources
           configMap:
             name: {{ $fullname }}-grafana-datasources
+        - name: dashboards
+          configMap:
+            name: {{ $fullname }}-grafana-dashboards
 ---
 apiVersion: v1
 kind: Service

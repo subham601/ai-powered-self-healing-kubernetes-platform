@@ -1,0 +1,21 @@
+{{- if and .Values.monitoring.enabled (not (empty .Values.monitoring.grafana.dashboardsDisabled)) }}
+{{- $fullname := include "ai-healing-platform.fullname" . -}}
+{{- $ns := .Values.namespaceOverride -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-grafana-dashboards-provisioning
+  namespace: {{ $ns }}
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'ai-self-healing'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /etc/grafana/provisioning/dashboards
+{{- end }}

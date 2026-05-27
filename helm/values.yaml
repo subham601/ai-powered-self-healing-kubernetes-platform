@@ -52,6 +52,12 @@ monitoring:
   loki:
     image: grafana/loki:3.1.0
 
+  promtail:
+    enabled: true
+    image: grafana/promtail:3.1.0
+    # Override if Loki is outside this Helm release. Defaults to in-cluster Loki.
+    lokiUrl: ""
+
 ai:
   provider: ollama
   ollamaBaseUrl: http://ollama:11434
