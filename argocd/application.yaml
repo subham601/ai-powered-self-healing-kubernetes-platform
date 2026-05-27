@@ -10,7 +10,7 @@ spec:
     server: https://kubernetes.default.svc
   source:
     # Point to your Git repository containing this monorepo.
-    repoURL: https://github.com/YOUR_ORG/ai-self-healing-platform.git
+    repoURL: https://github.com/subham601/ai-powered-self-healing-kubernetes-platform.git
     targetRevision: HEAD
     path: helm
     helm:
