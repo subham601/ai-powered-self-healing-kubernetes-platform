@@ -9,19 +9,23 @@ spec:
     namespace: ai-healing-system
     server: https://kubernetes.default.svc
   source:
-    repoURL: https://github.com/subham601/ai-powered-self-healing-kubernetes-platform.git
+    # Point to your Git repository containing this monorepo.
+    repoURL: https://github.com/YOUR_ORG/ai-self-healing-platform.git
     targetRevision: HEAD
-    path: ./helm
+    path: helm
     helm:
       valueFiles:
         - values.yaml
       parameters:
-        - name: image.tag
+        - name: backendImage.tag
           value: v1
+        - name: frontendImage.tag
+          value: v1
+        - name: monitoring.enabled
+          value: "true"
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-

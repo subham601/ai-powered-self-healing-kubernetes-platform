@@ -1,0 +1,262 @@
+{{- if .Values.monitoring.enabled }}
+{{- $fullname := include "ai-healing-platform.fullname" . -}}
+{{- $ns := .Values.namespaceOverride -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-prometheus-config
+  namespace: {{ $ns }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["{{ $fullname }}-alertmanager:9093"]
+    rule_files:
+      - /etc/prometheus/rules/alert-rules.yml
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+      - job_name: ai-healing-backend
+        metrics_path: /healthz
+        static_configs:
+          - targets: ["{{ $fullname }}-backend:{{ .Values.backend.service.port }}"]
+  alert-rules.yml: |
+{{ .Files.Get "files/alert-rules.yml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-alertmanager-config
+  namespace: {{ $ns }}
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: self-healing-webhook
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      repeat_interval: 3h
+    receivers:
+      - name: self-healing-webhook
+        webhook_configs:
+          - url: http://{{ $fullname }}-backend:{{ .Values.backend.service.port }}/webhooks/alerts
+            send_resolved: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-loki-config
+  namespace: {{ $ns }}
+data:
+  loki.yaml: |
+{{ .Files.Get "files/loki-config.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-grafana-datasources
+  namespace: {{ $ns }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ $fullname }}-prometheus:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://{{ $fullname }}-loki:3100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-prometheus
+  namespace: {{ $ns }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $fullname }}-prometheus
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}-prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ .Values.monitoring.prometheus.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-prometheus-config
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+        - name: rules
+          configMap:
+            name: {{ $fullname }}-prometheus-config
+            items:
+              - key: alert-rules.yml
+                path: alert-rules.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-prometheus
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app: {{ $fullname }}-prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-alertmanager
+  namespace: {{ $ns }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $fullname }}-alertmanager
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}-alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: {{ .Values.monitoring.alertmanager.image }}
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+          ports:
+            - containerPort: 9093
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-alertmanager-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-alertmanager
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app: {{ $fullname }}-alertmanager
+  ports:
+    - port: 9093
+      targetPort: 9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-loki
+  namespace: {{ $ns }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $fullname }}-loki
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}-loki
+    spec:
+      containers:
+        - name: loki
+          image: {{ .Values.monitoring.loki.image }}
+          args:
+            - -config.file=/etc/loki/loki.yaml
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-loki-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-loki
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app: {{ $fullname }}-loki
+  ports:
+    - port: 3100
+      targetPort: 3100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-grafana
+  namespace: {{ $ns }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $fullname }}-grafana
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}-grafana
+    spec:
+      containers:
+        - name: grafana
+          image: {{ .Values.monitoring.grafana.image }}
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.monitoring.grafana.adminPassword | quote }}
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+        - name: datasources
+          configMap:
+            name: {{ $fullname }}-grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-grafana
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app: {{ $fullname }}-grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+{{- end }}

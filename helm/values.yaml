@@ -1,5 +1,6 @@
 namespaceOverride: ai-healing-system
 nameOverride: ai-healing-platform
+
 backendImage:
   repository: shubham379/ai-self-healing-platform-backend
   tag: v1
@@ -22,6 +23,13 @@ backend:
     limits:
       cpu: 500m
       memory: 512Mi
+  env:
+    selfHealAllowedNamespaces: ai-healing-system
+    selfHealMaxRetries: "3"
+    selfHealCooldownSeconds: "300"
+    alertAutoHeal: "true"
+    alertDryRun: "false"
+
 frontend:
   replicas: 1
   service:
@@ -30,18 +38,34 @@ frontend:
   ingress:
     enabled: true
     host: ai-healing.local
+  apiBaseUrl: /api
 
 monitoring:
-  enabled: false
+  enabled: true
+  prometheus:
+    image: prom/prometheus:v2.54.1
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+  grafana:
+    image: grafana/grafana:11.2.0
+    adminPassword: changeme
+  loki:
+    image: grafana/loki:3.1.0
+
 ai:
   provider: ollama
   ollamaBaseUrl: http://ollama:11434
+  ollamaModel: llama3
+  openaiModel: gpt-4o-mini
   openaiApiKeySecretRef:
     name: ai-healing-openai
     key: OPENAI_API_KEY
+
 security:
   rbac:
     create: true
   serviceAccountName: ai-healing-platform
-corsAllowOrigins: []
+  auditLedger:
+    configMapName: ai-self-healing-audit-ledger
 
+corsAllowOrigins: "*"

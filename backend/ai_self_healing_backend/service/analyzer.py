@@ -7,6 +7,7 @@ from typing import Any
 from ai_self_healing_backend.ai.provider import AIProvider
 from ai_self_healing_backend.k8s.client import KubernetesClient
 from ai_self_healing_backend.service.ai_json import extract_json_object
+from ai_self_healing_backend.service.log_collector import LogCollector
 from ai_self_healing_backend.service.log_parsing import (
     extract_signals,
     heuristic_confidence,
@@ -19,6 +20,7 @@ class LogAnalyzer:
     def __init__(self, k8s: KubernetesClient, ai: AIProvider):
         self.k8s = k8s
         self.ai = ai
+        self.logs = LogCollector(k8s=k8s)
 
     def analyze(
         self,
@@ -28,13 +30,10 @@ class LogAnalyzer:
         tail_lines: int = 600,
         confidence_threshold: str = "medium",
     ) -> dict[str, Any]:
-        # Only pod logs supported in current implementation.
-        if workload_kind != "pod":
-            workload_kind = "pod"
-
-        logs = self.k8s.get_pod_logs(
+        logs, log_source = self.logs.collect(
             namespace=namespace,
-            pod_name=workload,
+            workload=workload,
+            workload_kind=workload_kind,
             tail_lines=tail_lines,
         )
 
@@ -52,9 +51,7 @@ class LogAnalyzer:
         llm_remediation: dict[str, Any] | None = None  # unused; kept for backward compatibility
 
 
-        ai_resp = asyncio.get_event_loop().run_until_complete(
-            self.ai.analyze_text(logs)
-        )
+        ai_resp = asyncio.run(self.ai.analyze_text(logs))
 
 
         # We use the heuristic fields from AIProvider for signals/root_cause,
@@ -140,6 +137,7 @@ class LogAnalyzer:
             tail_lines=tail_lines,
             analysis=analysis,
             evidence={
+                "log_source": log_source,
                 "heuristic_confidence": heuristic_conf,
                 "ai_provider_severity": getattr(ai_resp, "severity", None),
                 "signals_heuristic": heuristic_signals,

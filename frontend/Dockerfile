@@ -1,14 +1,12 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY package.json ./
 RUN npm install
 COPY . .
+ENV VITE_API_BASE_URL=/api
 RUN npm run build
 
-# Serve static assets
-FROM nginx:alpine
-COPY --from=0 /app/dist /usr/share/nginx/html
+FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8085
-
-

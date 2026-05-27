@@ -4,98 +4,86 @@ on:
   push:
     branches:
       - main
-
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
+  test-backend:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Compile backend
+        run: python -m compileall backend/ai_self_healing_backend
 
+  build-and-deploy:
+    needs: test-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to DockerHub (shell)
+      - name: Login to DockerHub
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+        run: echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
 
-      - name: Compute immutable image tag (git SHA)
+      - name: Compute image tag
         id: tag
-        run: |
-          set -euo pipefail
-          # Use short commit SHA to avoid YAML parsing and guarantee uniqueness per change.
-          NEXT_TAG="${GITHUB_SHA::7}"
-          echo "NEXT_TAG=${NEXT_TAG}" >> "$GITHUB_OUTPUT"
+        run: echo "NEXT_TAG=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push backend image
+      - name: Build and push backend
         run: |
-          set -euo pipefail
           docker build -t shubham379/ai-self-healing-platform-backend:${{ steps.tag.outputs.NEXT_TAG }} ./backend
           docker push shubham379/ai-self-healing-platform-backend:${{ steps.tag.outputs.NEXT_TAG }}
 
-      - name: Build and push frontend image
+      - name: Build and push frontend
         run: |
-          set -euo pipefail
           docker build -t shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }} ./frontend
           docker push shubham379/ai-self-healing-platform-frontend:${{ steps.tag.outputs.NEXT_TAG }}
 
-      - name: Update Helm values image tags (backend + frontend) [idempotent]
+      - name: Bump Helm image tags
         run: |
-          set -euo pipefail
-
           TAG="${{ steps.tag.outputs.NEXT_TAG }}"
+          python3 <<'PY'
+          import pathlib, re, os
+          tag = os.environ["TAG"]
+          p = pathlib.Path("helm/values.yaml")
+          text = p.read_text()
+          text = re.sub(
+              r"(backendImage:\n(?:  .+\n)*?  tag:)\s*\S+",
+              rf"\1 {tag}",
+              text,
+              count=1,
+          )
+          text = re.sub(
+              r"(frontendImage:\n(?:  .+\n)*?  tag:)\s*\S+",
+              rf"\1 {tag}",
+              text,
+              count=1,
+          )
+          p.write_text(text)
+          PY
+        env:
+          TAG: ${{ steps.tag.outputs.NEXT_TAG }}
 
-          # Idempotency: only update file if tags differ.
-          current_backend_tag="$(awk '/^backendImage:/{f=1} f && $1=="tag:"{print $2; exit}' helm/values.yaml)"
-          current_frontend_tag="$(awk '/^frontendImage:/{f=1} f && $1=="tag:"{print $2; exit}' helm/values.yaml)"
-
-          echo "Current backend tag: ${current_backend_tag}"
-          echo "Current frontend tag: ${current_frontend_tag}"
-          echo "Next tag: ${TAG}"
-
-          if [[ "${current_backend_tag}" == "${TAG}" && "${current_frontend_tag}" == "${TAG}" ]]; then
-            echo "Helm values already up-to-date; skipping values update."
-            echo "VALUES_UPDATED=false" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          # Robust key-anchored replacements (avoid brittle section-range sed).
-          # backendImage.tag
-          sed -i -E "s|^(backendImage:\n[[:space:]]+repository:.*\n[[:space:]]+tag:)[[:space:]]*.*$|\\1 ${TAG}|" helm/values.yaml
-          # frontendImage.tag
-          sed -i -E "s|^(frontendImage:\n[[:space:]]+repository:.*\n[[:space:]]+tag:)[[:space:]]*.*$|\\1 ${TAG}|" helm/values.yaml
-
-          echo "VALUES_UPDATED=true" >> "$GITHUB_ENV"
-
-      - name: Commit Helm values update
+      - name: Commit Helm values
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ "${VALUES_UPDATED:-true}" != "true" ]; then
-            echo "Helm values not updated; skipping commit/push."
-            exit 0
-          fi
-
           git add helm/values.yaml
-
-          # Idempotency safeguard: if nothing changed, avoid failing the workflow.
-          git diff --cached --quiet && {
-            echo "No staged diff; skipping commit/push."
-            exit 0
-          }
-
-          git commit -m "chore: bump image tag to ${{ steps.tag.outputs.NEXT_TAG }}"
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: bump image tags to ${{ steps.tag.outputs.NEXT_TAG }}"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push
-
-
-
-

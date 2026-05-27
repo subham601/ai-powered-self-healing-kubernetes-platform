@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: self-healing-webhook
+  group_by: [alertname, namespace, deployment]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: self-healing-webhook
+    webhook_configs:
+      - url: http://ai-healing-platform-backend:9000/webhooks/alerts
+        send_resolved: true

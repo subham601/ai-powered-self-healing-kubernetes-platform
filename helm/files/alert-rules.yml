@@ -1,0 +1,17 @@
+groups:
+  - name: kubernetes-workloads
+    rules:
+      - alert: PodCrashLooping
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod crash looping in {{ $labels.namespace }}"
+      - alert: HighMemoryUsage
+        expr: container_memory_working_set_bytes > 900000000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"

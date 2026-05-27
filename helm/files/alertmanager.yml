@@ -1,0 +1,11 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: self-healing-webhook
+  group_by: [alertname, namespace]
+  group_wait: 30s
+  repeat_interval: 3h
+
+receivers:
+  - name: default

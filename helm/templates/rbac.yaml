@@ -1,0 +1,40 @@
+{{- if .Values.security.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ai-healing-platform.fullname" . }}-backend
+  namespace: {{ .Values.namespaceOverride }}
+rules:
+  # Audit ledger persistence (ConfigMap).
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "patch", "update"]
+
+  # Log collection + workload inspection.
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+
+  # Deployment-level remediation (Option A only).
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-healing-platform.fullname" . }}-backend
+  namespace: {{ .Values.namespaceOverride }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.security.serviceAccountName }}
+    namespace: {{ .Values.namespaceOverride }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ai-healing-platform.fullname" . }}-backend
+{{- end }}
+

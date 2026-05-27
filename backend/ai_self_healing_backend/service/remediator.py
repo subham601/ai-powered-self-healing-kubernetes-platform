@@ -5,6 +5,8 @@ from typing import Any
 from ai_self_healing_backend.ai.provider import AIProvider
 from ai_self_healing_backend.k8s.client import KubernetesClient
 from ai_self_healing_backend.k8s.executor import K8sExecutor
+from ai_self_healing_backend.service.audit_ledger import AuditLedger, AuditPersistenceFailed
+from ai_self_healing_backend.service.audit_safe_executor import AuditSafeExecutor
 
 
 class Remediator:
@@ -13,6 +15,9 @@ class Remediator:
         self.ai = ai
         # Executor uses the official client APIs.
         self.executor = K8sExecutor(apps_api=self.k8s.apps, core_api=self.k8s.core)
+        # Final safety layer: fail-closed audit ledger + guarded execution.
+        self.audit_ledger = AuditLedger(k8s=self.k8s)
+        self.audit_safe_executor = AuditSafeExecutor(ledger=self.audit_ledger)
 
 
 
@@ -99,6 +104,8 @@ class Remediator:
         action = (recommendation.get("analysis") or {}).get("remediation") or {}
         action_type = action.get("type")
         action_params = action.get("parameters") or {}
+        analysis = recommendation.get("analysis") or {}
+        confidence = analysis.get("confidence") or "high"
 
         if not guard_ok:
             return {
@@ -120,6 +127,7 @@ class Remediator:
                     workload=workload,
                     workload_kind=workload_kind,
                     dry_run=dry_run,
+                    confidence=str(confidence),
                 )
             )
         elif action_type == "scale":
@@ -134,6 +142,7 @@ class Remediator:
                     workload_kind=workload_kind,
                     replicas=replicas,
                     dry_run=dry_run,
+                    confidence=str(confidence),
                 )
             )
         elif action_type == "rollback":
@@ -143,6 +152,7 @@ class Remediator:
                     workload=workload,
                     workload_kind=workload_kind,
                     dry_run=dry_run,
+                    confidence=str(confidence),
                 )
             )
         else:
@@ -150,6 +160,10 @@ class Remediator:
                 {"action": "noop", "dry_run": dry_run, "reason": "unknown_action"}
             )
 
+        # Fail-closed safety layer:
+        # If audit persistence failed, Remediator must stop and return the audit_blocked response.
+        if planned_actions and planned_actions[0].get("audit_blocked") is True:
+            return {"audit_blocked": True, "reason": "audit_persistence_failed"}
 
         return {
             "dry_run": dry_run,
@@ -162,7 +176,12 @@ class Remediator:
         }
 
     def restart(
-        self, namespace: str, workload: str, workload_kind: str, dry_run: bool
+        self,
+        namespace: str,
+        workload: str,
+        workload_kind: str,
+        dry_run: bool,
+        confidence: str = "high",
     ) -> dict[str, Any]:
         if workload_kind != "deployment":
             return {
@@ -183,11 +202,25 @@ class Remediator:
                 "dry_run": True,
             }
 
-        return self.executor.restart_deployment(namespace, workload)
+        try:
+            return self.audit_safe_executor.execute(
+                action="restart",
+                namespace=namespace,
+                workload=workload,
+                confidence=confidence,
+                execute_fn=lambda: self.executor.restart_deployment(namespace, workload),
+            )
+        except AuditPersistenceFailed:
+            return {"audit_blocked": True, "reason": "audit_persistence_failed"}
 
 
     def rollback(
-        self, namespace: str, workload: str, workload_kind: str, dry_run: bool
+        self,
+        namespace: str,
+        workload: str,
+        workload_kind: str,
+        dry_run: bool,
+        confidence: str = "high",
     ) -> dict[str, Any]:
         if workload_kind != "deployment":
             return {
@@ -208,7 +241,16 @@ class Remediator:
                 "dry_run": True,
             }
 
-        return self.executor.rollback_deployment(namespace, workload)
+        try:
+            return self.audit_safe_executor.execute(
+                action="rollback",
+                namespace=namespace,
+                workload=workload,
+                confidence=confidence,
+                execute_fn=lambda: self.executor.rollback_deployment(namespace, workload),
+            )
+        except AuditPersistenceFailed:
+            return {"audit_blocked": True, "reason": "audit_persistence_failed"}
 
 
     def scale(
@@ -218,6 +260,7 @@ class Remediator:
         workload_kind: str,
         replicas: int,
         dry_run: bool,
+        confidence: str = "high",
     ) -> dict[str, Any]:
         if workload_kind != "deployment":
             return {
@@ -240,7 +283,18 @@ class Remediator:
                 "dry_run": True,
             }
 
-        return self.executor.scale_deployment(namespace, workload, replicas)
+        try:
+            return self.audit_safe_executor.execute(
+                action="scale",
+                namespace=namespace,
+                workload=workload,
+                confidence=confidence,
+                execute_fn=lambda: self.executor.scale_deployment(
+                    namespace, workload, replicas
+                ),
+            )
+        except AuditPersistenceFailed:
+            return {"audit_blocked": True, "reason": "audit_persistence_failed"}
 
 
 

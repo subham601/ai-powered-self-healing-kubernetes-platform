@@ -17,6 +17,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "ai-healing-platform.name" . }}
         app.kubernetes.io/component: backend
+        prometheus.io/scrape: "true"
     spec:
       serviceAccountName: {{ .Values.security.serviceAccountName }}
       containers:
@@ -41,7 +42,38 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           env:
             - name: AI_PROVIDER
-              value: {{ .Values.ai.provider }}
+              value: {{ .Values.ai.provider | quote }}
             - name: OLLAMA_BASE_URL
-              value: {{ .Values.ai.ollamaBaseUrl }}
-
+              value: {{ .Values.ai.ollamaBaseUrl | quote }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.ai.ollamaModel | quote }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.ai.openaiModel | quote }}
+            - name: SELF_HEAL_LEDGER_NAMESPACE
+              value: {{ .Values.namespaceOverride | quote }}
+            - name: SELF_HEAL_LEDGER_CONFIGMAP
+              value: {{ .Values.security.auditLedger.configMapName | quote }}
+            - name: SELF_HEAL_ALLOWED_NAMESPACES
+              value: {{ .Values.backend.env.selfHealAllowedNamespaces | quote }}
+            - name: SELF_HEAL_MAX_RETRIES
+              value: {{ .Values.backend.env.selfHealMaxRetries | quote }}
+            - name: SELF_HEAL_COOLDOWN_SECONDS
+              value: {{ .Values.backend.env.selfHealCooldownSeconds | quote }}
+            - name: SELF_HEAL_ALERT_AUTO_HEAL
+              value: {{ .Values.backend.env.alertAutoHeal | quote }}
+            - name: SELF_HEAL_ALERT_DRY_RUN
+              value: {{ .Values.backend.env.alertDryRun | quote }}
+            - name: CORS_ALLOW_ORIGINS
+              value: {{ .Values.corsAllowOrigins | quote }}
+            {{- if .Values.monitoring.enabled }}
+            - name: LOKI_URL
+              value: http://{{ include "ai-healing-platform.fullname" . }}-loki:3100
+            {{- end }}
+            {{- if eq .Values.ai.provider "openai" }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ai.openaiApiKeySecretRef.name }}
+                  key: {{ .Values.ai.openaiApiKeySecretRef.key }}
+                  optional: true
+            {{- end }}

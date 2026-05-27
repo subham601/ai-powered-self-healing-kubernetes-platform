@@ -6,6 +6,21 @@ from dataclasses import dataclass
 import httpx
 
 
+STRUCTURED_PROMPT = """You are an SRE assistant analyzing Kubernetes workload logs.
+Return ONLY valid JSON (no markdown) with this schema:
+{
+  "root_cause": "string",
+  "confidence": "low|medium|high",
+  "signals": ["string"],
+  "fix": "string",
+  "remediation": {
+    "type": "restart|rollback|scale|noop",
+    "parameters": {}
+  }
+}
+Choose remediation conservatively. Use noop if uncertain."""
+
+
 @dataclass
 class AIResponse:
     root_cause: str
@@ -17,13 +32,13 @@ class AIResponse:
 
 class AIProvider:
     def __init__(self):
-        self.provider = os.getenv("AI_PROVIDER", "ollama")
+        self.provider = os.getenv("AI_PROVIDER", "ollama").lower()
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     async def analyze_text(self, text: str) -> AIResponse:
-        # Minimal heuristic + optional LLM enrichment.
         signals: list[str] = []
         t = text.lower()
         if "crashloopbackoff" in t or "crash loop" in t:
@@ -46,32 +61,9 @@ class AIProvider:
         ]
         actions: list[dict] = []
 
-        if self.provider == "ollama":
-            prompt = (
-                "You are an SRE assistant. Analyze Kubernetes logs and return JSON with keys: "
-                "root_cause, severity (low|medium|high), signals[], "
-                "recommendations[], actions[] (each action has type and parameters).\n\n"
-                f"LOGS:\n{text[:12000]}"
-            )
-            payload = {
-                "model": self.ollama_model,
-                "prompt": prompt,
-                "stream": False,
-            }
-
-            try:
-                r = httpx.post(
-                    f"{self.ollama_base_url}/api/generate",
-                    json=payload,
-                    timeout=60,
-                )
-                r.raise_for_status()
-                raw = r.json().get("response", "")
-                if isinstance(raw, str) and raw.strip():
-                    root_cause = f"AI analysis: {raw.strip()}"
-            except Exception:
-                # Keep heuristic answer on any AI failure.
-                pass
+        raw_llm = await self._call_llm(text)
+        if raw_llm:
+            root_cause = raw_llm
 
         return AIResponse(
             root_cause=root_cause,
@@ -81,3 +73,54 @@ class AIProvider:
             actions=actions,
         )
 
+    async def _call_llm(self, text: str) -> str | None:
+        prompt = f"{STRUCTURED_PROMPT}\n\nLOGS:\n{text[:12000]}"
+        try:
+            if self.provider == "openai" and self.openai_api_key:
+                return await self._openai(prompt)
+            return await self._ollama(prompt)
+        except Exception:
+            return None
+
+    async def _ollama(self, prompt: str) -> str | None:
+        payload = {
+            "model": self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        }
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post(
+                f"{self.ollama_base_url}/api/generate",
+                json=payload,
+            )
+            r.raise_for_status()
+            raw = r.json().get("response", "")
+            return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+    async def _openai(self, prompt: str) -> str | None:
+        headers = {
+            "Authorization": f"Bearer {self.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": self.openai_model,
+            "messages": [
+                {"role": "system", "content": STRUCTURED_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+        }
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=body,
+            )
+            r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"]
+            if isinstance(content, str) and content.strip():
+                # Normalize to string for downstream JSON extractor.
+                return content.strip()
+            return None

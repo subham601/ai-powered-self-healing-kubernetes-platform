@@ -1,0 +1,47 @@
+groups:
+  - name: kubernetes-workloads
+    rules:
+      - alert: PodCrashLooping
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} restarted >3 times in 15m"
+
+      - alert: PodNotReady
+        expr: kube_pod_status_ready{condition="true"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod {{ $labels.pod }} not ready"
+
+      - alert: HighCPUUsage
+        expr: |
+          sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace, pod)
+            / sum(kube_pod_container_resource_limits{resource="cpu"}) by (namespace, pod) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.pod }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          sum(container_memory_working_set_bytes{container!=""}) by (namespace, pod)
+            / sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.pod }}"
+
+      - alert: DeploymentUnavailable
+        expr: kube_deployment_status_replicas_available < kube_deployment_spec_replicas
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deployment {{ $labels.deployment }} unavailable"

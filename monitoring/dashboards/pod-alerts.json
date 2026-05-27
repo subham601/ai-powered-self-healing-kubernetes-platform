@@ -1,5 +1,43 @@
 {
-  "title": "AI Self-Healing - Pod Alerts",
-  "panels": []
+  "title": "AI Self-Healing — Workload Health",
+  "uid": "ai-healing-workloads",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Firing alerts",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod restarts (15m rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(kube_pod_container_status_restarts_total[15m])) by (namespace, pod)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent pod logs (Loki)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{namespace=\"ai-healing-system\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
 }
-
