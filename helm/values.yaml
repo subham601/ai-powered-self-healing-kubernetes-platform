@@ -3,12 +3,12 @@ nameOverride: ai-healing-platform
 
 backendImage:
   repository: shubham379/ai-self-healing-platform-backend
-  tag: v1
+  tag: 9da56b1
   pullPolicy: IfNotPresent
 
 frontendImage:
   repository: shubham379/ai-self-healing-platform-frontend
-  tag: v1
+  tag: 9da56b1
   pullPolicy: IfNotPresent
 
 backend:
