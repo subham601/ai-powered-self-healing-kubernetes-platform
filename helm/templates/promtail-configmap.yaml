@@ -13,15 +13,22 @@ data:
       grpc_listen_port: 0
 
     positions:
-      filename: /tmp/positions.yaml
+      filename: /run/promtail/positions.yaml
 
     clients:
       - url: {{ .Values.monitoring.promtail.lokiUrl | default (printf "http://%s-loki:3100/loki/api/v1/push" $fullname) | quote }}
 
     scrape_configs:
       - job_name: kubernetes-pods
+        ignore_old_entries: true
         pipeline_stages:
           - cri: {}
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+          # Prevent Loki "entry too far behind" by dropping very old entries.
+          - drop:
+              older_than: 1h
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
@@ -59,8 +66,14 @@ data:
 
       # Container logs fallback (works with containerd/cri-o setups)
       - job_name: kubernetes-containers
+        ignore_old_entries: true
         pipeline_stages:
           - cri: {}
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+          - drop:
+              older_than: 1h
         static_configs:
           - targets:
               - localhost
