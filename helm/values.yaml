@@ -6,12 +6,12 @@ namespace:
 
 backendImage:
   repository: shubham379/ai-self-healing-platform-backend
-  tag: 335d466
+  tag: 2c258a1
   pullPolicy: IfNotPresent
 
 frontendImage:
   repository: shubham379/ai-self-healing-platform-frontend
-  tag: 335d466
+  tag: 2c258a1
   pullPolicy: IfNotPresent
 
 backend:
